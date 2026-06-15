@@ -191,7 +191,7 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 		return nil, errors.New("Can't get User info")
 	}
 
-	plaintext, err := decaryptAndVerify(payload, encKey, macKey)
+	plaintext, err := decryptAndVerify(payload, encKey, macKey)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +278,7 @@ func (userdata *User) AppendToFile(filename string, content []byte) error {
 
 	// get decrpt key
 	pEncKey, pMacKey := userdata.getPersonalKey(filename)
-	accessBytes, err := decaryptAndVerify(accessPayload, pEncKey, pMacKey)
+	accessBytes, err := decryptAndVerify(accessPayload, pEncKey, pMacKey)
 	if err != nil {
 		return err
 	}
@@ -296,7 +296,7 @@ func (userdata *User) AppendToFile(filename string, content []byte) error {
 	}
 
 	fEncKey, fMacKey := getFileKeys(access.FileKey)
-	inodeBytes, err := decaryptAndVerify(inodePayload, fEncKey, fMacKey)
+	inodeBytes, err := decryptAndVerify(inodePayload, fEncKey, fMacKey)
 	if err != nil {
 		return err
 	}
@@ -339,7 +339,7 @@ func (userdata *User) LoadFile(filename string) (content []byte, err error) {
 	}
 
 	pEncKey, pMacKey := userdata.getPersonalKey(filename)
-	accessBytes, err := decaryptAndVerify(accessPayload, pEncKey, pMacKey)
+	accessBytes, err := decryptAndVerify(accessPayload, pEncKey, pMacKey)
 	if err != nil {
 		return nil, err
 	}
@@ -355,7 +355,7 @@ func (userdata *User) LoadFile(filename string) (content []byte, err error) {
 		return nil, errors.New("file structure corrupted: inode missing")
 	}
 	fEncKey, fMacKey := getFileKeys(access.FileKey)
-	inodeBytes, err := decaryptAndVerify(inodePayload, fEncKey, fMacKey)
+	inodeBytes, err := decryptAndVerify(inodePayload, fEncKey, fMacKey)
 	if err != nil {
 		return nil, err
 	}
@@ -373,7 +373,7 @@ func (userdata *User) LoadFile(filename string) (content []byte, err error) {
 			return nil, errors.New("Can't get data by this UUID")
 		}
 
-		blockPlaintext, err := decaryptAndVerify(blockPayload, fEncKey, fMacKey)
+		blockPlaintext, err := decryptAndVerify(blockPayload, fEncKey, fMacKey)
 		if err != nil {
 			return nil, err
 		}
@@ -384,4 +384,77 @@ func (userdata *User) LoadFile(filename string) (content []byte, err error) {
 	}
 
 	return data, nil
+}
+
+func (userdata *User) CreateInvitation(filename string, recipientUsername string) (
+	invitationPtr uuid.UUID, err error) {
+	// check File Ownership
+	if userdata.Files == nil {
+		return uuid.Nil, errors.New("user don't have file")
+	}
+
+	// Qualify File Information from remote server
+	accessUUID, ok := userdata.Files[filename]
+	if !ok {
+		return uuid.Nil, errors.New("file not found: cannot create invitation")
+	}
+
+	// decrypt accrss struct
+	accessPayload, ok := userlib.DatastoreGet(accessUUID)
+	if !ok {
+		return uuid.Nil, errors.New("file not found: cannot create invitation")
+	}
+	pEncKey, pMacKey := userdata.getPersonalKey(filename)
+	accessBytes, err := decryptAndVerify(accessPayload, pEncKey, pMacKey)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	var access Access
+	if err := json.Unmarshal(accessBytes, &access); err != nil {
+		return uuid.Nil, err
+	}
+
+	// Get recipient's Publioc Key From KeyStore
+	recipientPubkey, ok := userlib.KeystoreGet(recipientUsername + "_enc_pub")
+	if !ok {
+		return uuid.Nil, errors.New("recipient user does not exist")
+	}
+
+	invitation := Invitation{
+		FileKey:   access.FileKey,
+		InodeUUID: access.InodeUUID,
+	}
+	invBytes, err := json.Marshal(invitation)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	// encrypt invitation by recipientPubKey
+	ciphertext, err := userlib.PKEEnc(recipientPubkey, invBytes)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	// Sign the invitation by DssignKey
+	signature, err := userlib.DSSign(userdata.DSSignKey, ciphertext)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	invPayload := append(ciphertext, signature...)
+
+	// Push the Invitation to remote server
+	invRandomPtr := uuid.New()
+	userlib.DatastoreSet(invRandomPtr, invPayload)
+
+	return invRandomPtr, nil
+}
+
+func (userdata *User) AcceptInvitation(senderUsername string, invitationPtr uuid.UUID, filename string) error {
+	return nil
+}
+
+func (userdata *User) RevokeAccess(filename string, recipientUsername string) error {
+	return nil
 }

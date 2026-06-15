@@ -42,7 +42,7 @@ func encryptAndMAC(data []byte, encKey []byte, macKey []byte) (payload []byte, e
 	return payload, nil
 }
 
-func decaryptAndVerify(payload []byte, encKey []byte, macKey []byte) (plaintext []byte, err error) {
+func decryptAndVerify(payload []byte, encKey []byte, macKey []byte) (plaintext []byte, err error) {
 	const macLen = 64
 
 	if len(payload) < macLen {

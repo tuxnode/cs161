@@ -253,9 +253,17 @@ type EncryptedData struct {
 	Hmac       []byte
 }
 
+/* inode contain an array of blockUUIDs */
 type Inode struct {
 	Size       int
 	BlockUUIDs []userlib.UUID
+}
+
+func (userdata *User) getUserKey(salt []byte) (encKey []byte, macKey []byte) {
+	fileSecKey := userlib.Argon2Key(userdata.MasterKey, salt, 32)
+	enc := userlib.Hash(append(fileSecKey, []byte("enc")...))[:16]
+	mac := userlib.Hash(append(fileSecKey, []byte("mac")...))[:16]
+	return enc, mac
 }
 
 func (userdata *User) StoreFile(filename string, content []byte) (err error) {
@@ -264,9 +272,7 @@ func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 	}
 
 	salt := userlib.Hash([]byte(filename))
-	fileSecKey := userlib.Argon2Key(userdata.MasterKey, salt, 32)
-	encKey := userlib.Hash(append(fileSecKey, []byte("enc")...))[:16]
-	macKey := userlib.Hash(append(fileSecKey, []byte("mac")...))[:16]
+	encKey, macKey := userdata.getUserKey(salt)
 
 	blocks := ByteToBlock(content)
 
@@ -302,6 +308,58 @@ func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 }
 
 func (userdata *User) AppendToFile(filename string, content []byte) error {
+	if content == nil {
+		return errors.New("Invalid argument")
+	}
+
+	salt := userlib.Hash([]byte(filename))
+	encKey, macKey := userdata.getUserKey(salt)
+
+	inodeUUID := userlib.UUID(userlib.Hash([]byte(filename + userdata.Username))[:16])
+	value, ok := userlib.DatastoreGet(inodeUUID)
+	if !ok {
+		return errors.New("Can't get File by UUID")
+	}
+
+	var data EncryptedData
+	err := json.Unmarshal(value, &data)
+	if err != nil {
+		return err
+	}
+
+	//解密并分离数据
+	inodeBytes, err := decaryptAndVerify(append(data.Ciphertext, data.Hmac...), encKey, macKey)
+	if err != nil {
+		return err
+	}
+
+	var inode Inode
+	err = json.Unmarshal(inodeBytes, &inode)
+	if err != nil {
+		return err
+	}
+
+	// 逐块加密
+	newBlocks := ByteToBlock(content)
+	for e := newBlocks.Front(); e != nil; e = e.Next() {
+		fb := e.Value.(*FileBlock)
+
+		ciphertext := userlib.SymEnc(encKey, userlib.RandomBytes(16), fb.block[:])
+		bHmac, _ := userlib.HMACEval(macKey, ciphertext)
+
+		payload, _ := json.Marshal(EncryptedData{Ciphertext: ciphertext, Hmac: bHmac})
+		userlib.DatastoreSet(fb.BlockUUID, payload)
+		inode.BlockUUIDs = append(inode.BlockUUIDs, fb.BlockUUID)
+	}
+
+	inode.Size += len(content)
+
+	inodeBytes, _ = json.Marshal(inode)
+	inodeCipher := userlib.SymEnc(encKey, userlib.RandomBytes(16), inodeBytes)
+	inodeHmac, _ := userlib.HMACEval(macKey, inodeCipher)
+	inodePayload, _ := json.Marshal(EncryptedData{Ciphertext: inodeCipher, Hmac: inodeHmac})
+	userlib.DatastoreSet(inodeUUID, inodePayload)
+
 	return nil
 }
 

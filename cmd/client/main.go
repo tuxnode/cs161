@@ -117,8 +117,9 @@ func main() {
 		cmd := flag.NewFlagSet("read", flag.ExitOnError)
 		filename := cmd.String("filename", "", "")
 		address := cmd.String("address", "localhost:8080", "")
+		tlsEnabled := cmd.Bool("tls", true, "use TLS encryption")
 		cmd.Parse(os.Args[2:])
-		if err := cli.ReadFile(*filename, *address); err != nil {
+		if err := cli.ReadFileTLS(*filename, *address, *tlsEnabled); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
@@ -142,6 +143,6 @@ Commands:
   createinvitation -filename <name> -recipient <user>
   acceptinvitation -sender <user> -invitation <uuid> -filename <name>
   revokeaccess -filename <name> -recipient <user>
-  read -filename <name> [-address <host:port>]
+  read -filename <name> [-address <host:port>] [-tls=true]
 `, os.Args[0])
 }

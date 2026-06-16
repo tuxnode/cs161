@@ -16,10 +16,11 @@ type Server struct {
 }
 
 type Config struct {
-	Addr    string
-	DataDir string
-	Cert    string
-	Key     string
+	Addr       string
+	DataDir    string
+	Cert       string
+	Key        string
+	TLSEnabled bool
 }
 
 func New(cfg Config) (*Server, error) {
@@ -37,21 +38,32 @@ func New(cfg Config) (*Server, error) {
 func (srv *Server) Run() error {
 	defer srv.store.Close()
 
-	cert, err := tls.LoadX509KeyPair(srv.config.Cert, srv.config.Key)
-	if err != nil {
-		return err
-	}
+	var listener net.Listener
+	var err error
 
-	listener, err := tls.Listen("tcp", srv.config.Addr, &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		ClientAuth:   tls.NoClientCert,
-	})
+	if srv.config.TLSEnabled {
+		var cert tls.Certificate
+		cert, err = tls.LoadX509KeyPair(srv.config.Cert, srv.config.Key)
+		if err != nil {
+			return err
+		}
+		listener, err = tls.Listen("tcp", srv.config.Addr, &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			ClientAuth:   tls.NoClientCert,
+		})
+	} else {
+		listener, err = net.Listen("tcp", srv.config.Addr)
+	}
 	if err != nil {
 		return err
 	}
 	defer listener.Close()
 
-	log.Printf("server listening on %s (data: %s)", srv.config.Addr, srv.config.DataDir)
+	proto := "TLS"
+	if !srv.config.TLSEnabled {
+		proto = "TCP"
+	}
+	log.Printf("server listening on %s (%s, data: %s)", srv.config.Addr, proto, srv.config.DataDir)
 
 	for {
 		conn, err := listener.Accept()

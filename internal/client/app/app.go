@@ -56,12 +56,22 @@ func (c *Client) RevokeAccess(filename string, recipientUsername string) error {
 }
 
 func (c *Client) ReadFile(filename string, address string) error {
-	tlsConn, err := tls.Dial("tcp", address, &tls.Config{InsecureSkipVerify: true})
+	return c.ReadFileTLS(filename, address, true)
+}
+
+func (c *Client) ReadFileTLS(filename string, address string, tlsEnabled bool) error {
+	var conn net.Conn
+	var err error
+
+	if tlsEnabled {
+		conn, err = tls.Dial("tcp", address, &tls.Config{InsecureSkipVerify: true})
+	} else {
+		conn, err = net.Dial("tcp", address)
+	}
 	if err != nil {
 		return err
 	}
-	defer tlsConn.Close()
+	defer conn.Close()
 
-	var conn net.Conn = tlsConn
 	return netstream.FileReceiver(filename, &conn)
 }

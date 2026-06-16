@@ -141,15 +141,21 @@ RevokeAccess (撤销访问):
 - Go 1.20+
 - 支持的操作系统：Linux, macOS, Windows
 
-### 安装
+### 快速开始
 
 ```bash
 # 克隆仓库
 git clone git@github.com:tuxnode/ShareLock.git
 cd ShareLock
 
-# 构建所有包
-go build ./...
+# 构建所有内容并生成开发 TLS 证书
+make all
+
+# 运行所有测试
+make test
+
+# 查看可用命令
+make help
 ```
 
 ### 运行测试
@@ -158,16 +164,7 @@ go build ./...
 
 ```bash
 # 运行所有测试
-go test ./...
-
-# 运行加密单元测试（白盒）
-go test -v ./internal/client/encryption/...
-
-# 运行客户端集成测试（黑盒）
-go test -v ./internal/client/encryption_test/...
-
-# 运行用户库测试
-go test -v ./project2-userlib/...
+make test
 
 # 运行特定测试套件
 go test -v -run "TestSetupAndExecution" ./...
@@ -176,8 +173,8 @@ go test -v -run "TestSetupAndExecution" ./...
 ### CLI 使用
 
 ```bash
-# 构建客户端二进制
-go build -o sharelock ./cmd/client
+# 构建二进制
+make build
 
 # 初始化用户
 ./sharelock inituser -username alice -password secret
@@ -198,15 +195,18 @@ invite=$(./sharelock createinvitation -filename hello.txt -recipient bob)
 # 通过 TLS 加密流读取文件
 ./sharelock read -filename hello.txt -address localhost:8080
 
-# 构建并运行 KV 存储服务端（需要 TLS 证书）
-go build -o sharelock-server ./cmd/server
+# 运行 KV 存储服务端（make all 已生成证书）
 ./sharelock-server -address :8080 -dir ./data -cert cert.pem -key key.pem
+
+# 明文 TCP 模式（开发用，无需证书）
+./sharelock-server -tls=false -address :8080 -dir ./data
+./sharelock read -filename hello.txt -address localhost:8080 -tls=false
 ```
 
 ### 代码检查
 
 ```bash
-go vet ./...
+make vet
 ```
 
 ---

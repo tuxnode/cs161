@@ -3,7 +3,7 @@ BIN_SRV := sharelock-server
 CERT    := cert.pem
 KEY     := key.pem
 
-.PHONY: all build client server clean test vet bench gen-cert
+.PHONY: all build client server clean test vet bench gen-cert help
 
 all: build gen-cert
 
@@ -38,3 +38,15 @@ bench:
 clean:
 	rm -f $(BIN) $(BIN_SRV) $(CERT) $(KEY)
 	go clean ./...
+
+help:
+	@echo "Usage:"
+	@echo "  make all        build binaries + generate dev certificate"
+	@echo "  make build      build client and server binaries"
+	@echo "  make client     build client binary only"
+	@echo "  make server     build server binary only"
+	@echo "  make gen-cert   generate self-signed TLS certificate"
+	@echo "  make test       run all tests"
+	@echo "  make bench      run all benchmarks"
+	@echo "  make vet        run go vet"
+	@echo "  make clean      remove binaries and certificates"

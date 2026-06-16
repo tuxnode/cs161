@@ -139,7 +139,7 @@ RevokeAccess:
 ### Prerequisites
 
 - Go 1.20+
-- Supported OS: Linux, macOS, Windows
+- Supported OS: Linux, macOS, Windows (Path issues may arise)
 
 ### Installation
 

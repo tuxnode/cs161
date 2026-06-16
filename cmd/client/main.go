@@ -113,6 +113,17 @@ func main() {
 		}
 		fmt.Println("ok")
 
+	case "read":
+		cmd := flag.NewFlagSet("read", flag.ExitOnError)
+		filename := cmd.String("filename", "", "")
+		address := cmd.String("address", "localhost:8080", "")
+		cmd.Parse(os.Args[2:])
+		if err := cli.ReadFile(*filename, *address); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("ok")
+
 	default:
 		printUsage()
 		os.Exit(1)
@@ -131,5 +142,6 @@ Commands:
   createinvitation -filename <name> -recipient <user>
   acceptinvitation -sender <user> -invitation <uuid> -filename <name>
   revokeaccess -filename <name> -recipient <user>
+  read -filename <name> [-address <host:port>]
 `, os.Args[0])
 }

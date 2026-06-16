@@ -1,4 +1,4 @@
-package netstraem
+package netstream
 
 import (
 	"io"
@@ -17,11 +17,7 @@ func FileSeander(filename string, conn *net.Conn) error {
 	defer file.Close()
 
 	_, err = io.Copy(*conn, file)
-	if err != nil {
-		return nil
-	}
-
-	return nil
+	return err
 }
 
 func FileReceiver(filename string, conn *net.Conn) error {

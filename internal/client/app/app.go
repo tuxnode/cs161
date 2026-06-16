@@ -1,7 +1,11 @@
 package app
 
 import (
+	"crypto/tls"
+	"net"
+
 	client "github.com/cs161-staff/project2-starter-code/internal/client/encryption"
+	"github.com/cs161-staff/project2-starter-code/internal/client/netstream"
 	"github.com/google/uuid"
 )
 
@@ -49,4 +53,15 @@ func (c *Client) AcceptInvitation(senderUsername string, invitationPtr uuid.UUID
 
 func (c *Client) RevokeAccess(filename string, recipientUsername string) error {
 	return c.user.RevokeAccess(filename, recipientUsername)
+}
+
+func (c *Client) ReadFile(filename string, address string) error {
+	tlsConn, err := tls.Dial("tcp", address, &tls.Config{InsecureSkipVerify: true})
+	if err != nil {
+		return err
+	}
+	defer tlsConn.Close()
+
+	var conn net.Conn = tlsConn
+	return netstream.FileReceiver(filename, &conn)
 }

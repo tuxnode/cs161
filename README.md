@@ -1,5 +1,7 @@
 # ShareLock
 
+[**简体中文版本**](./README-zh.md)
+
 A cryptographically secure, decentralized-trust file storage and sharing system designed to operate safely over untrusted cloud infrastructure.
 
 **ShareLock** extends the core architectural principles of the UC Berkeley CS161 security framework into an end-to-end encrypted (E2EE) file sharing application. It guarantees confidentiality, integrity, and authenticity for all user data, even in the event of a total server-side compromise.
@@ -52,7 +54,9 @@ User Password
 
 - **File Blocking:** Files are split into 512-byte `FileBlock` chunks, each encrypted independently with a file-specific key derived from a random `FileKey`.
 - **Inode:** Tracks total file size and an ordered list of block UUIDs. Encrypted and MAC'd as a single blob under the file key.
-- **Access Record:** A struct mapping a `FileKey` and `InodeUUID` to a specific filename/user pair. Stored encrypted under the user's personal key for that filename.
+- **MailboxNode:** Per-user pointer containing `FileKey` and `InodeUUID`, encrypted with a mailbox-specific key. Each user (owner or sharee) has their own MailboxNode.
+- **Access Record:** Maps a filename to the owner's MailboxNode UUID/key and maintains a sharing tree (`Chidren` map) of all direct sharees for revocation.
+- **Invitation:** Encrypted payload containing a `MailboxUUID` and `MailboxKey`, transmitted via RSA-OAEP + digital signature to grant access.
 - **User Struct:** Contains the username, RSA private key, DS signing key, Argon2-derived master key, and a map of known file access pointers. Encrypted under user's derived keys and stored in the Datastore.
 
 ### 4. Cryptographic Flow
@@ -62,11 +66,14 @@ StoreFile:
   content → ByteToBlock (512B chunks)
           → encryptAndMAC(block, fEncKey, fMacKey) for each block
           → Inode{Size, BlockUUIDs} → encryptAndMAC → DatastoreSet
-          → Access{FileKey, InodeUUID} → encryptAndMAC(personal keys) → DatastoreSet
+          → MailboxNode{FileKey, InodeUUID} → encryptAndMAC(mailbox keys) → DatastoreSet
+          → Access{MymailboxUUID, MymailboxKey} → encryptAndMAC(personal keys) → DatastoreSet
 
 LoadFile:
   Access UUID → DatastoreGet → decryptAndVerify(personal keys)
-             → Access{FileKey, InodeUUID}
+             → Access{MymailboxUUID, MymailboxKey}
+             → MailboxNode → DatastoreGet → decryptAndVerify(mailbox keys)
+             → MailboxNode{FileKey, InodeUUID}
              → Inode → DatastoreGet → decryptAndVerify(file keys)
              → Blocks → DatastoreGet → decryptAndVerify(file keys)
              → BlockYToByte → content
@@ -74,6 +81,23 @@ LoadFile:
 AppendToFile:
   Same as StoreFile block creation, but appends to existing inode's BlockUUIDs
   and updates Size. Does not re-encrypt existing blocks.
+
+CreateInvitation:
+  → Decrypt own MailboxNode
+  → Create new MailboxNode for recipient (same FileKey/InodeUUID)
+  → Encrypt invitation (RSA-OAEP) + sign (RSA-PKCS1.5)
+  → Update sender's Access.Chidren
+
+AcceptInvitation:
+  → Verify signature + decrypt invitation (RSA-OAEP)
+  → Create local Access pointing to received MailboxNode
+
+RevokeAccess:
+  → Generate new FileKey
+  → Re-encrypt all blocks and inode with new key
+  → Create new owner MailboxNode
+  → Update remaining children's MailboxNodes with new FileKey
+  → Remove revoked user from Chidren
 ```
 
 ---
@@ -81,8 +105,8 @@ AppendToFile:
 ## Key Features
 
 - **End-to-End Encryption (E2EE):** All encryption/decryption occurs strictly client-side. Keys never leave the local device in plaintext.
-- **Granular Access Control:** Seamlessly share files with specific users via encrypted invitation pointers.
-- **Instant Revocation:** Dynamic re-keying mechanism via key-sharing trees isolates revoked users without breaking the chain of trust for other valid recipients.
+- **Granular Access Control:** Seamlessly share files with specific users via encrypted invitation pointers backed by the MailboxNode sharing tree.
+- **Instant Revocation:** Dynamic re-keying mechanism rotates the file key on revocation, isolates revoked users, and transparently updates remaining sharees without breaking their access.
 - **Append Optimization:** Append to existing large files without downloading or re-encrypting the entire file structure.
 - **Encrypt-Then-MAC:** All ciphertexts are authenticated with HMAC-SHA512 before storage, guaranteeing integrity.
 
@@ -92,14 +116,15 @@ AppendToFile:
 
 | Component | Status |
 |-----------|--------|
-| `InitUser` | Implemented |
-| `GetUser` | Implemented |
-| `StoreFile` | Implemented |
-| `LoadFile` | Partially implemented (missing return) |
-| `AppendToFile` | Implemented |
-| `CreateInvitation` | Stub |
-| `AcceptInvitation` | Stub |
-| `RevokeAccess` | Stub |
+| `InitUser` | ✅ Implemented |
+| `GetUser` | ✅ Implemented |
+| `StoreFile` | ✅ Implemented |
+| `LoadFile` | ✅ Implemented |
+| `AppendToFile` | ✅ Implemented |
+| `CreateInvitation` | ✅ Implemented |
+| `AcceptInvitation` | ✅ Implemented |
+| `RevokeAccess` | ✅ Implemented |
+| CLI (`cmd/client`) | ✅ Implemented |
 
 ---
 
@@ -130,16 +155,39 @@ The project uses [Ginkgo v2](https://onsi.github.io/ginkgo/) and [Gomega](https:
 go test ./...
 
 # Run client unit tests (white-box)
-go test -v ./client/...
+go test -v ./internal/client/...
 
 # Run integration tests (black-box)
-go test -v ./client_test/...
+go test -v ./internal/client_test/...
 
 # Run user library tests
 go test -v ./project2-userlib/...
 
 # Run a specific test suite
 go test -v -run "TestSetupAndExecution" ./...
+```
+
+### CLI Usage
+
+```bash
+# Build the CLI binary
+go build -o sharelock ./cmd/client
+
+# Initialize a user
+./sharelock inituser -username alice -password secret
+
+# Store a file
+./sharelock storefile -filename hello.txt -content "Hello, World!"
+
+# Load a file
+./sharelock loadfile -filename hello.txt
+
+# Share a file
+invite=$(./sharelock createinvitation -filename hello.txt -recipient bob)
+./sharelock acceptinvitation -sender alice -invitation $invite -filename hello.txt
+
+# Revoke access
+./sharelock revokeaccess -filename hello.txt -recipient bob
 ```
 
 ### Linting
@@ -154,23 +202,29 @@ go vet ./...
 
 ```
 .
-├── client/                     # Client implementation package
-│   ├── access.go               # Access control: CreateInvitation, AcceptInvitation, RevokeAccess
-│   ├── client.go               # Core client: User struct, InitUser, GetUser, StoreFile, etc.
-│   ├── client_unittest.go      # White-box unit tests (Ginkgo/Gomega)
-│   ├── File.go                 # File block splitting/merging utilities
-│   └── utils.go                # Cryptographic helpers: encryptAndMAC, decryptAndVerify, key derivation
-├── client_test/
-│   └── client_test.go          # Black-box integration tests
-├── project2-userlib/           # Cryptographic library (Datastore, Keystore, primitives)
-│   ├── userlib.go              # Core crypto primitives and storage interfaces
-│   ├── userlib_test.go         # Library tests
+├── cmd/
+│   └── client/
+│       └── main.go              # CLI entry point (subcommand dispatch)
+├── internal/
+│   ├── client/
+│   │   ├── access.go            # Data structures: MailboxNode, Access, Invitation, ChildrenInfo
+│   │   ├── client.go            # Core client: User struct, InitUser, GetUser, StoreFile, etc.
+│   │   ├── client_unittest.go   # White-box unit tests (Ginkgo/Gomega)
+│   │   ├── File.go              # File block splitting/merging utilities
+│   │   ├── utils.go             # Cryptographic helpers: encryptAndMAC, decryptAndVerify, key derivation
+│   │   └── app/
+│   │       └── app.go           # Application-level client business logic layer
+│   └── client_test/
+│       └── client_test.go       # Black-box integration tests
+├── project2-userlib/            # Cryptographic library (Datastore, Keystore, primitives)
+│   ├── userlib.go               # Core crypto primitives and storage interfaces
+│   ├── userlib_test.go          # Library tests
 │   └── go.mod
-├── go.mod                      # Module definition
-├── go.sum                      # Dependency checksums
+├── go.mod                       # Module definition
+├── go.sum                       # Dependency checksums
 ├── CHANGELOG.md
-├── project2-spec.pdf           # Original project specification
-└── proj2.excalidraw            # Architecture diagram (Excalidraw format)
+├── project2-spec.pdf            # Original project specification
+└── proj2.excalidraw             # Architecture diagram (Excalidraw format)
 ```
 
 ---

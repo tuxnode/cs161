@@ -190,3 +190,11 @@ GitHub.sublime-settings
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/go,goland,visualstudiocode,sublimetext
+
+# Build artifacts
+sharelock
+sharelock-server
+
+# Generated certificates
+cert.pem
+key.pem

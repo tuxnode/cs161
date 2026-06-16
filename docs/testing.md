@@ -26,28 +26,28 @@ ShareLock uses [Ginkgo v2](https://onsi.github.io/ginkgo/) and [Gomega](https://
 
 ```bash
 # Run all tests
-go test ./...
+make test
 
-# Run encryption unit tests (white-box)
-go test -v ./internal/client/encryption/...
+# App client tests (black-box)
+make test-app
 
-# Run encryption integration tests (black-box)
-go test -v ./internal/client/encryption_test/...
+# Encryption integration tests (black-box)
+make test-encryption
 
-# Run app client integration tests (black-box)
-go test -v ./internal/client/app_test/...
+# Encryption unit tests (white-box)
+make test-unit
 
-# Run KV store unit tests
-go test -v ./internal/server/store/...
+# Handler protocol tests
+make test-handler
 
-# Run handler protocol tests
-go test -v ./internal/server/handler/...
+# KV store unit tests
+make test-store
 
-# Run server TLS integration tests
-go test -v ./internal/integration_test/...
+# Server TLS integration tests
+make test-integration
 
-# Run a specific test suite by name
-go test -v -run "TestApp" ./...
+# Userlib tests
+make test-userlib
 
 # Run a specific spec by description
 go test -v ./internal/client/app_test/ --ginkgo.focus="RevokeAccess"
@@ -56,17 +56,17 @@ go test -v ./internal/client/app_test/ --ginkgo.focus="RevokeAccess"
 ### Running Benchmarks
 
 ```bash
-# Run all benchmarks (all packages)
-go test ./... -bench=. -benchtime=1s
+# Run all benchmarks
+make bench
 
-# Run KV store benchmarks only
-go test ./internal/server/store/ -bench=. -benchtime=1s
+# KV store benchmarks
+make bench-store
 
-# Run handler protocol benchmarks
-go test ./internal/server/handler/ -bench=. -benchtime=1s
+# Handler benchmarks
+make bench-handler
 
-# Run TLS end-to-end benchmarks
-go test ./internal/integration_test/ -bench=. -benchtime=1s -timeout=120s
+# TLS end-to-end benchmarks
+make bench-integration
 
 # Run with memory allocation stats
 go test ./internal/server/store/ -bench=. -benchmem

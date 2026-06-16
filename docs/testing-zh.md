@@ -24,28 +24,28 @@ ShareLock 使用 [Ginkgo v2](https://onsi.github.io/ginkgo/) 和 [Gomega](https:
 
 ```bash
 # 运行所有测试
-go test ./...
+make test
 
-# 运行加密单元测试（白盒）
-go test -v ./internal/client/encryption/...
+# 应用客户端测试（黑盒）
+make test-app
 
-# 运行加密集成测试（黑盒）
-go test -v ./internal/client/encryption_test/...
+# 加密集成测试（黑盒）
+make test-encryption
 
-# 运行应用客户端集成测试（黑盒）
-go test -v ./internal/client/app_test/...
+# 加密单元测试（白盒）
+make test-unit
 
-# 运行 KV 存储单元测试
-go test -v ./internal/server/store/...
+# 处理协议测试
+make test-handler
 
-# 运行处理协议测试
-go test -v ./internal/server/handler/...
+# KV 存储单元测试
+make test-store
 
-# 运行服务端 TLS 集成测试
-go test -v ./internal/integration_test/...
+# 服务端 TLS 集成测试
+make test-integration
 
-# 按测试套件名称运行
-go test -v -run "TestApp" ./...
+# Userlib 测试
+make test-userlib
 
 # 按描述过滤测试用例
 go test -v ./internal/client/app_test/ --ginkgo.focus="RevokeAccess"
@@ -55,16 +55,16 @@ go test -v ./internal/client/app_test/ --ginkgo.focus="RevokeAccess"
 
 ```bash
 # 运行所有基准测试
-go test ./... -bench=. -benchtime=1s
+make bench
 
-# 运行 KV 存储基准测试
-go test ./internal/server/store/ -bench=. -benchtime=1s
+# KV 存储基准测试
+make bench-store
 
-# 运行处理协议基准测试
-go test ./internal/server/handler/ -bench=. -benchtime=1s
+# 处理协议基准测试
+make bench-handler
 
-# 运行 TLS 端到端基准测试
-go test ./internal/integration_test/ -bench=. -benchtime=1s -timeout=120s
+# TLS 端到端基准测试
+make bench-integration
 
 # 输出内存分配统计
 go test ./internal/server/store/ -bench=. -benchmem

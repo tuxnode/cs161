@@ -166,8 +166,14 @@ The project uses [Ginkgo v2](https://onsi.github.io/ginkgo/) and [Gomega](https:
 # Run all tests
 make test
 
-# Run a specific test suite
-go test -v -run "TestSetupAndExecution" ./...
+# Run specific test suites (all with -v)
+make test-app          # app client tests
+make test-encryption   # encryption integration tests
+make test-unit         # encryption unit tests
+make test-handler      # handler protocol tests
+make test-store        # KV store tests
+make test-integration  # server TLS integration tests
+make test-userlib      # userlib tests
 ```
 
 ### Host Management

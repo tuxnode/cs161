@@ -166,8 +166,14 @@ make help
 # 运行所有测试
 make test
 
-# 运行特定测试套件
-go test -v -run "TestSetupAndExecution" ./...
+# 运行特定测试套件（均含 -v）
+make test-app          # 应用客户端测试
+make test-encryption   # 加密集成测试
+make test-unit         # 加密单元测试
+make test-handler      # 处理协议测试
+make test-store        # KV 存储测试
+make test-integration  # 服务端 TLS 集成测试
+make test-userlib      # userlib 测试
 ```
 
 ### 主机管理

@@ -223,9 +223,25 @@ func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 	fileKey := userlib.RandomBytes(16)
 	inodeUUID := uuid.New()
 
-	access := Access{
+	// Init Mailbox and push to server
+	mailboxnode := MailboxNode{
 		FileKey:   fileKey,
 		InodeUUID: inodeUUID,
+	}
+	mailboxBytes, err := json.Marshal(mailboxnode)
+	if err != nil {
+		return err
+	}
+	mailboxUUID := uuid.New()
+	mailboxKey := userlib.RandomBytes(16)
+	mEncKey, mMacKey := getMailKeys(mailboxKey)
+	mailboxPayload, _ := encryptAndMAC(mailboxBytes, mEncKey, mMacKey)
+	userlib.DatastoreSet(mailboxUUID, mailboxPayload)
+
+	access := Access{
+		MymailboxUUID: mailboxUUID,
+		MymailboxKey:  mailboxKey,
+		Chidren:       make(map[string]ChildrenInfo),
 	}
 
 	accessBytes, _ := json.Marshal(access)
@@ -289,13 +305,29 @@ func (userdata *User) AppendToFile(filename string, content []byte) error {
 		return err
 	}
 
+	// Decrypt own MailboxNode to get file key and inode UUID
+	mailboxPayload, ok := userlib.DatastoreGet(access.MymailboxUUID)
+	if !ok {
+		return errors.New("file not found: cannot append")
+	}
+	mEncKey, mMacKey := getMailKeys(access.MymailboxKey)
+	mailboxBytes, err := decryptAndVerify(mailboxPayload, mEncKey, mMacKey)
+	if err != nil {
+		return err
+	}
+
+	var myMailbox MailboxNode
+	if err := json.Unmarshal(mailboxBytes, &myMailbox); err != nil {
+		return err
+	}
+
 	// Get File Inode
-	inodePayload, ok := userlib.DatastoreGet(access.InodeUUID)
+	inodePayload, ok := userlib.DatastoreGet(myMailbox.InodeUUID)
 	if !ok {
 		return errors.New("file not found: cannot append")
 	}
 
-	fEncKey, fMacKey := getFileKeys(access.FileKey)
+	fEncKey, fMacKey := getFileKeys(myMailbox.FileKey)
 	inodeBytes, err := decryptAndVerify(inodePayload, fEncKey, fMacKey)
 	if err != nil {
 		return err
@@ -322,13 +354,9 @@ func (userdata *User) AppendToFile(filename string, content []byte) error {
 
 	newInodeBytes, _ := json.Marshal(inode)
 	newInodePayload, _ := encryptAndMAC(newInodeBytes, fEncKey, fMacKey)
-	userlib.DatastoreSet(access.InodeUUID, newInodePayload)
+	userlib.DatastoreSet(myMailbox.InodeUUID, newInodePayload)
 
 	return nil
-}
-
-func (userdata *User) getFileKeys(key []byte) (any, any) {
-	panic("unimplemented")
 }
 
 func (userdata *User) LoadFile(filename string) (content []byte, err error) {
@@ -349,12 +377,28 @@ func (userdata *User) LoadFile(filename string) (content []byte, err error) {
 		return nil, err
 	}
 
+	// Decrypt own MailboxNode to get file key and inode UUID
+	mailboxPayload, ok := userlib.DatastoreGet(access.MymailboxUUID)
+	if !ok {
+		return nil, errors.New("file structure corrupted: mailbox missing")
+	}
+	mEncKey, mMacKey := getMailKeys(access.MymailboxKey)
+	mailboxBytes, err := decryptAndVerify(mailboxPayload, mEncKey, mMacKey)
+	if err != nil {
+		return nil, err
+	}
+
+	var myMailbox MailboxNode
+	if err := json.Unmarshal(mailboxBytes, &myMailbox); err != nil {
+		return nil, err
+	}
+
 	// decrypt inode
-	inodePayload, ok := userlib.DatastoreGet(access.InodeUUID)
+	inodePayload, ok := userlib.DatastoreGet(myMailbox.InodeUUID)
 	if !ok {
 		return nil, errors.New("file structure corrupted: inode missing")
 	}
-	fEncKey, fMacKey := getFileKeys(access.FileKey)
+	fEncKey, fMacKey := getFileKeys(myMailbox.FileKey)
 	inodeBytes, err := decryptAndVerify(inodePayload, fEncKey, fMacKey)
 	if err != nil {
 		return nil, err
@@ -406,6 +450,40 @@ func (userdata *User) CreateInvitation(filename string, recipientUsername string
 		return uuid.Nil, err
 	}
 
+	// Decrypt own MailboxNode to get file key and inode UUID
+	mailboxPayload, ok := userlib.DatastoreGet(access.MymailboxUUID)
+	if !ok {
+		return uuid.Nil, errors.New("file not found: mailbox missing")
+	}
+	mEncKey, mMacKey := getMailKeys(access.MymailboxKey)
+	mailboxBytes, err := decryptAndVerify(mailboxPayload, mEncKey, mMacKey)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	var myMailbox MailboxNode
+	if err := json.Unmarshal(mailboxBytes, &myMailbox); err != nil {
+		return uuid.Nil, err
+	}
+
+	// Create recipient's MailboxNode
+	recipientMailboxUUID := uuid.New()
+	recipientMailboxKey := userlib.RandomBytes(16)
+	recipientMailbox := MailboxNode{
+		FileKey:   myMailbox.FileKey,
+		InodeUUID: myMailbox.InodeUUID,
+	}
+	recipientMailboxBytes, err := json.Marshal(recipientMailbox)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	rmEncKey, rmMacKey := getMailKeys(recipientMailboxKey)
+	recipientMailboxPayload, err := encryptAndMAC(recipientMailboxBytes, rmEncKey, rmMacKey)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	userlib.DatastoreSet(recipientMailboxUUID, recipientMailboxPayload)
+
 	// Get recipient's Publioc Key From KeyStore
 	recipientPubkey, ok := userlib.KeystoreGet(recipientUsername + "_enc_pub")
 	if !ok {
@@ -413,8 +491,8 @@ func (userdata *User) CreateInvitation(filename string, recipientUsername string
 	}
 
 	invitation := Invitation{
-		FileKey:   access.FileKey,
-		InodeUUID: access.InodeUUID,
+		MailboxUUID: recipientMailboxUUID,
+		MailboxKey:  recipientMailboxKey,
 	}
 	invBytes, err := json.Marshal(invitation)
 	if err != nil {
@@ -438,6 +516,15 @@ func (userdata *User) CreateInvitation(filename string, recipientUsername string
 	// Push the Invitation to remote server
 	invRandomPtr := uuid.New()
 	userlib.DatastoreSet(invRandomPtr, invPayload)
+
+	// Update sender's Access Chidren
+	access.Chidren[recipientUsername] = ChildrenInfo{
+		MailboxUUID: recipientMailboxUUID,
+		MailboxKey:  recipientMailboxKey,
+	}
+	newAccessBytes, _ := json.Marshal(access)
+	newAccessPayload, _ := encryptAndMAC(newAccessBytes, pEncKey, pMacKey)
+	userlib.DatastoreSet(accessUUID, newAccessPayload)
 
 	return invRandomPtr, nil
 }
@@ -478,8 +565,9 @@ func (userdata *User) AcceptInvitation(senderUsername string, invitationPtr uuid
 
 	// Store this Transfrom Access data and push to remote server
 	receiveAccess := Access{
-		FileKey:   getInvitation.FileKey,
-		InodeUUID: getInvitation.InodeUUID,
+		MymailboxUUID: getInvitation.MailboxUUID,
+		MymailboxKey:  getInvitation.MailboxKey,
+		Chidren:       make(map[string]ChildrenInfo),
 	}
 	currAccessPayload, err := json.Marshal(receiveAccess)
 	if err != nil {

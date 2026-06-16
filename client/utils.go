@@ -80,9 +80,16 @@ func (userdata *User) getPersonalKey(filename string) (encKey []byte, macKey []b
 	return encKey, macKey
 }
 
-/* enxtends Globol File Ket Pair */
+/* enxtends Globol File Key Pair */
 func getFileKeys(fileKey []byte) (encKey []byte, macKey []byte) {
 	encKey, _ = userlib.HashKDF(fileKey, []byte("file_enc"))
 	macKey, _ = userlib.HashKDF(fileKey, []byte("file_mac"))
 	return encKey[:16], macKey[:16]
+}
+
+/* extends Mailbox Key pair */
+func getMailKeys(mailboxKey []byte) (mEncKey []byte, mMacKey []byte) {
+	encKey, _ := userlib.HashKDF(mailboxKey, []byte("mailbox_enc"))
+	macKey, _ := userlib.HashKDF(mailboxKey, []byte("mailbox_mac"))
+	return encKey, macKey
 }

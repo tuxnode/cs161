@@ -4,8 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/cs161-staff/project2-starter-code/internal/client/app"
+	"github.com/cs161-staff/project2-starter-code/internal/client/config"
 	"github.com/google/uuid"
 )
 
@@ -15,17 +17,30 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Parse global flags (before subcommand)
-	kvAddr := os.Getenv("SHARELOCK_KV_ADDR")
-	kvTLS := true
-	if v := os.Getenv("SHARELOCK_KV_TLS"); v == "false" || v == "0" {
-		kvTLS = false
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
+		os.Exit(1)
 	}
 
-	// Connect to KV server if configured
-	if kvAddr != "" {
-		app.Connect(kvAddr, kvTLS)
-		defer app.Disconnect()
+	// Handle host management commands
+	switch os.Args[1] {
+	case "host":
+		hostCmd(cfg, os.Args[2:])
+		return
+	}
+
+	// Connect to KV server via config
+	if os.Args[1] != "read" {
+		hostName := "default"
+		if h := os.Getenv("SHARELOCK_HOST"); h != "" {
+			hostName = h
+		}
+		entry, ok := cfg.Get(hostName)
+		if ok && entry.Addr != "" {
+			app.Connect(entry.Addr, entry.TLS)
+			defer app.Disconnect()
+		}
 	}
 
 	cli := &app.Client{}
@@ -144,12 +159,111 @@ func main() {
 	}
 }
 
+func hostCmd(cfg *config.Config, args []string) {
+	if len(args) == 0 {
+		hostUsage()
+		return
+	}
+	switch args[0] {
+	case "list":
+		hosts := cfg.List()
+		names := make([]string, 0, len(hosts))
+		for n := range hosts {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		for _, n := range names {
+			h := hosts[n]
+			tlsStr := "tls"
+			if !h.TLS {
+				tlsStr = "plain"
+			}
+			mark := " "
+			if n == "default" {
+				mark = "*"
+			}
+			fmt.Printf("%s %-12s %s (%s)\n", mark, n, h.Addr, tlsStr)
+		}
+
+	case "add":
+		if len(args) < 3 {
+			fmt.Fprintln(os.Stderr, "usage: host add <name> <addr> [--tls=true]")
+			os.Exit(1)
+		}
+		name := args[1]
+		addr := args[2]
+		tls := true
+		for i := 3; i < len(args); i++ {
+			if args[i] == "--tls=false" {
+				tls = false
+			}
+		}
+		cfg.Set(name, addr, tls)
+		if err := cfg.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "save error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("ok")
+
+	case "remove":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: host remove <name>")
+			os.Exit(1)
+		}
+		cfg.Remove(args[1])
+		if err := cfg.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "save error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("ok")
+
+	case "default":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: host default <name>")
+			os.Exit(1)
+		}
+		entry, ok := cfg.Get(args[1])
+		if !ok {
+			fmt.Fprintf(os.Stderr, "host %q not found\n", args[1])
+			os.Exit(1)
+		}
+		cfg.Set("default", entry.Addr, entry.TLS)
+		cfg.Remove(args[1])
+		if err := cfg.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "save error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("ok")
+
+	default:
+		hostUsage()
+	}
+}
+
+func hostUsage() {
+	fmt.Fprintln(os.Stderr, `Usage: host <command> [args]
+
+Commands:
+  list                   list all hosts
+  add <name> <addr>      add a host (--tls=false for plain TCP)
+  remove <name>          remove a host
+  default <name>         set an existing host as default`)
+}
+
 func printUsage() {
 	fmt.Fprintf(os.Stderr, `Usage: %s <command> [flags]
 
 Environment:
-  SHARELOCK_KV_ADDR   KV server address (e.g. localhost:8080)
-  SHARELOCK_KV_TLS    enable TLS for KV server (default true)
+  SHARELOCK_HOST   select host from .hosts config (default: "default")
+
+Config file:
+  ~/.config/sharelock/.hosts  (fallback: ~/.hosts)
+
+Host management:
+  host list
+  host add <name> <addr> [--tls=false]
+  host remove <name>
+  host default <name>
 
 Commands:
   inituser -username <name> -password <pw>

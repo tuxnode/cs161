@@ -170,6 +170,24 @@ make test
 go test -v -run "TestSetupAndExecution" ./...
 ```
 
+### 主机管理
+
+客户端使用 `~/.config/sharelock/.hosts`（备选 `~/.hosts`）管理 KV 服务端连接。
+
+```bash
+# 添加 KV 服务端
+./sharelock host add default localhost:8080
+
+# 添加明文 TCP 主机（开发用，无需 TLS）
+./sharelock host add dev localhost:8080 --tls=false
+
+# 通过环境变量选择主机
+SHARELOCK_HOST=dev ./sharelock storefile -filename hello.txt -content "data"
+
+# 列出已配置的主机
+./sharelock host list
+```
+
 ### CLI 使用
 
 ```bash
@@ -200,7 +218,6 @@ invite=$(./sharelock createinvitation -filename hello.txt -recipient bob)
 
 # 明文 TCP 模式（开发用，无需证书）
 ./sharelock-server -tls=false -address :8080 -dir ./data
-./sharelock read -filename hello.txt -address localhost:8080 -tls=false
 ```
 
 ### 代码检查
@@ -222,6 +239,8 @@ make vet
 │       └── main.go              # KV 存储服务端 (TLS + BadgerDB)
 ├── internal/
 │   ├── client/
+│   │   ├── config/
+│   │   │   └── config.go        # .hosts 文件管理 (~/.config/sharelock/.hosts)
 │   │   ├── encryption/
 │   │   │   ├── access.go        # 数据结构：MailboxNode, Access, Invitation, ChildrenInfo
 │   │   │   ├── encryption.go    # 核心客户端：User 结构、InitUser、GetUser、StoreFile 等

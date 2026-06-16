@@ -170,6 +170,24 @@ make test
 go test -v -run "TestSetupAndExecution" ./...
 ```
 
+### Host Management
+
+The client uses `~/.config/sharelock/.hosts` (fallback: `~/.hosts`) to manage KV server connections.
+
+```bash
+# Add a KV server host
+./sharelock host add default localhost:8080
+
+# Add a plain TCP host (no TLS, for development)
+./sharelock host add dev localhost:8080 --tls=false
+
+# Select host via environment variable
+SHARELOCK_HOST=dev ./sharelock storefile -filename hello.txt -content "data"
+
+# List configured hosts
+./sharelock host list
+```
+
 ### CLI Usage
 
 ```bash
@@ -200,7 +218,6 @@ invite=$(./sharelock createinvitation -filename hello.txt -recipient bob)
 
 # Run in plain TCP mode (no TLS, for development)
 ./sharelock-server -tls=false -address :8080 -dir ./data
-./sharelock read -filename hello.txt -address localhost:8080 -tls=false
 ```
 
 ### Linting
@@ -222,6 +239,8 @@ make vet
 │       └── main.go              # KV Store server (TLS + BadgerDB)
 ├── internal/
 │   ├── client/
+│   │   ├── config/
+│   │   │   └── config.go        # .hosts file management (~/.config/sharelock/.hosts)
 │   │   ├── encryption/
 │   │   │   ├── access.go        # Data structures: MailboxNode, Access, Invitation, ChildrenInfo
 │   │   │   ├── encryption.go    # Core client: User struct, InitUser, GetUser, StoreFile, etc.

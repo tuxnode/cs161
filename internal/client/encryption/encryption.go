@@ -241,11 +241,11 @@ func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 	access := Access{
 		MymailboxUUID: mailboxUUID,
 		MymailboxKey:  mailboxKey,
-		Chidren:       make(map[string]ChildrenInfo),
+		Children:      make(map[string]ChildrenInfo),
 	}
 
 	accessBytes, _ := json.Marshal(access)
-	pEncKey, pMacKey := userdata.getPersonalKey(filename)
+	pEncKey, pMacKey := getPersonalKey(userdata.MasterKey, filename)
 	accessPayload, _ := encryptAndMAC(accessBytes, pEncKey, pMacKey)
 
 	accessUUID, _ := uuid.FromBytes(userlib.Hash([]byte(userdata.Username + filename))[:16])
@@ -276,7 +276,7 @@ func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 
 	// update AccessUUID
 	userdata.Files[filename] = accessUUID
-	userdata.saveUser()
+	saveUser(nil, userdata)
 
 	return nil
 }
@@ -293,7 +293,7 @@ func (userdata *User) AppendToFile(filename string, content []byte) error {
 	}
 
 	// get decrpt key
-	pEncKey, pMacKey := userdata.getPersonalKey(filename)
+	pEncKey, pMacKey := getPersonalKey(userdata.MasterKey, filename)
 	accessBytes, err := decryptAndVerify(accessPayload, pEncKey, pMacKey)
 	if err != nil {
 		return err
@@ -366,7 +366,7 @@ func (userdata *User) LoadFile(filename string) (content []byte, err error) {
 		return nil, errors.New("file not found: access struct missing")
 	}
 
-	pEncKey, pMacKey := userdata.getPersonalKey(filename)
+	pEncKey, pMacKey := getPersonalKey(userdata.MasterKey, filename)
 	accessBytes, err := decryptAndVerify(accessPayload, pEncKey, pMacKey)
 	if err != nil {
 		return nil, err
@@ -439,7 +439,7 @@ func (userdata *User) CreateInvitation(filename string, recipientUsername string
 	if !ok {
 		return uuid.Nil, errors.New("file not found: cannot create invitation")
 	}
-	pEncKey, pMacKey := userdata.getPersonalKey(filename)
+	pEncKey, pMacKey := getPersonalKey(userdata.MasterKey, filename)
 	accessBytes, err := decryptAndVerify(accessPayload, pEncKey, pMacKey)
 	if err != nil {
 		return uuid.Nil, err
@@ -517,8 +517,8 @@ func (userdata *User) CreateInvitation(filename string, recipientUsername string
 	invRandomPtr := uuid.New()
 	userlib.DatastoreSet(invRandomPtr, invPayload)
 
-	// Update sender's Access Chidren
-	access.Chidren[recipientUsername] = ChildrenInfo{
+	// Update sender's Access Children
+	access.Children[recipientUsername] = ChildrenInfo{
 		MailboxUUID: recipientMailboxUUID,
 		MailboxKey:  recipientMailboxKey,
 	}
@@ -567,13 +567,13 @@ func (userdata *User) AcceptInvitation(senderUsername string, invitationPtr uuid
 	receiveAccess := Access{
 		MymailboxUUID: getInvitation.MailboxUUID,
 		MymailboxKey:  getInvitation.MailboxKey,
-		Chidren:       make(map[string]ChildrenInfo),
+		Children:      make(map[string]ChildrenInfo),
 	}
 	currAccessPayload, err := json.Marshal(receiveAccess)
 	if err != nil {
 		return err
 	}
-	pEncKey, pMacKey := userdata.getPersonalKey(filename)
+	pEncKey, pMacKey := getPersonalKey(userdata.MasterKey, filename)
 	currAccessBytes, err := encryptAndMAC(currAccessPayload, pEncKey, pMacKey)
 	if err != nil {
 		return err
@@ -586,7 +586,7 @@ func (userdata *User) AcceptInvitation(senderUsername string, invitationPtr uuid
 
 	// update local User status
 	userdata.Files[filename] = accessUUID
-	userdata.saveUser()
+	saveUser(nil, userdata)
 	return nil
 }
 
@@ -595,7 +595,7 @@ RevokeAccess revokes a recipient's access to a file by rotating the file key.
 流程: 1)生成新FileKey 2)重新加密所有block和inode
 
 	3)创建owner的新MailboxNode 4)更新其他children的MailboxNode为新FileKey
-	5)从Chidren移除被撤销用户 6)持久化Access
+	5)从Children移除被撤销用户 6)持久化Access
 */
 func (userdata *User) RevokeAccess(filename string, recipientUsername string) error {
 	// Get Access struct
@@ -607,7 +607,7 @@ func (userdata *User) RevokeAccess(filename string, recipientUsername string) er
 	if !ok {
 		return errors.New("file not found: cannot revoke")
 	}
-	pEncKey, pMacKey := userdata.getPersonalKey(filename)
+	pEncKey, pMacKey := getPersonalKey(userdata.MasterKey, filename)
 	accessBytes, err := decryptAndVerify(accessPayload, pEncKey, pMacKey)
 	if err != nil {
 		return err
@@ -696,7 +696,7 @@ func (userdata *User) RevokeAccess(filename string, recipientUsername string) er
 	userlib.DatastoreSet(newMailboxUUID, newMailboxPayload)
 
 	// Update remaining children's MailboxNodes with new file key
-	for childUsername, childInfo := range access.Chidren {
+	for childUsername, childInfo := range access.Children {
 		if childUsername == recipientUsername {
 			continue
 		}
@@ -723,8 +723,8 @@ func (userdata *User) RevokeAccess(filename string, recipientUsername string) er
 		userlib.DatastoreSet(childInfo.MailboxUUID, updatedChildMailboxPayload)
 	}
 
-	// Remove revoked user from Chidren
-	delete(access.Chidren, recipientUsername)
+	// Remove revoked user from Children
+	delete(access.Children, recipientUsername)
 
 	// Update owner's Access with new mailbox info
 	access.MymailboxUUID = newMailboxUUID
@@ -736,7 +736,7 @@ func (userdata *User) RevokeAccess(filename string, recipientUsername string) er
 
 	// update local User status
 	userdata.Files[filename] = accessUUID
-	userdata.saveUser()
+	saveUser(nil, userdata)
 
 	return nil
 }

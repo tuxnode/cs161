@@ -13,7 +13,7 @@ type MailboxNode struct {
 type Access struct {
 	MymailboxUUID userlib.UUID
 	MymailboxKey  []byte
-	Chidren       map[string]ChildrenInfo // Sharing Tree
+	Children      map[string]ChildrenInfo // Sharing Tree
 }
 
 type ChildrenInfo struct {

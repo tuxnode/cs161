@@ -8,22 +8,37 @@ import (
 	"github.com/google/uuid"
 )
 
-func (userdata *User) saveUser() error {
-	userBytes, _ := json.Marshal(userdata)
+func saveUser(storage StorageService, userdata *User) error {
+	userBytes, err := json.Marshal(userdata)
+	if err != nil {
+		return err
+	}
 
 	encKey, err := userlib.HashKDF(userdata.MasterKey, []byte("enc"))
 	if err != nil {
 		return err
 	}
 	macKey, err := userlib.HashKDF(userdata.MasterKey, []byte("mac"))
+	if err != nil {
+		return err
+	}
 
-	paylaod, _ := encryptAndMAC(userBytes, encKey, macKey)
+	payload, err := encryptAndMAC(userBytes, encKey, macKey)
+	if err != nil {
+		return err
+	}
 	hash := userlib.Hash([]byte(userdata.Username + "userStruct"))
 
-	// generate useruuid by username hash
-	userUUID, _ := uuid.FromBytes(hash[:16])
+	userUUID, err := uuid.FromBytes(hash[:16])
+	if err != nil {
+		return err
+	}
 
-	userlib.DatastoreSet(userUUID, paylaod)
+	if storage != nil {
+		storage.Set(userUUID, payload)
+	} else {
+		userlib.DatastoreSet(userUUID, payload)
+	}
 	return nil
 }
 
@@ -71,9 +86,9 @@ func decryptAndVerify(payload []byte, encKey []byte, macKey []byte) (plaintext [
 }
 
 /* getPersonalKey: functions used encrypt Access Key Struct */
-func (userdata *User) getPersonalKey(filename string) (encKey []byte, macKey []byte) {
+func getPersonalKey(masterKey []byte, filename string) (encKey []byte, macKey []byte) {
 	salt := userlib.Hash([]byte(filename))
-	baseKey, _ := userlib.HashKDF(userdata.MasterKey, salt)
+	baseKey, _ := userlib.HashKDF(masterKey, salt)
 
 	encKey, _ = userlib.HashKDF(baseKey[:16], []byte("personal_enc"))
 	macKey, _ = userlib.HashKDF(baseKey[:16], []byte("personal_mac"))

@@ -11,7 +11,20 @@ import (
 )
 
 type Client struct {
-	user *client.User
+	user              *client.User
+	userService       *client.UserService
+	fileService       *client.FileService
+	invitationService *client.InvitationService
+}
+
+func (c *Client) ensureServices() {
+	if c.userService == nil {
+		storage := client.NewUserlibStorage()
+		keyStore := client.NewUserlibKeyStore()
+		c.userService = client.NewUserService(storage, keyStore)
+		c.fileService = client.NewFileService(storage, keyStore)
+		c.invitationService = client.NewInvitationService(storage, keyStore)
+	}
 }
 
 func Connect(address string, tlsEnabled bool) {
@@ -23,7 +36,8 @@ func Disconnect() {
 }
 
 func (c *Client) InitUser(username string, password string) error {
-	user, err := client.InitUser(username, password)
+	c.ensureServices()
+	user, err := c.userService.InitUser(username, password)
 	if err != nil {
 		return err
 	}
@@ -32,7 +46,8 @@ func (c *Client) InitUser(username string, password string) error {
 }
 
 func (c *Client) GetUser(username string, password string) error {
-	user, err := client.GetUser(username, password)
+	c.ensureServices()
+	user, err := c.userService.GetUser(username, password)
 	if err != nil {
 		return err
 	}
@@ -41,27 +56,27 @@ func (c *Client) GetUser(username string, password string) error {
 }
 
 func (c *Client) StoreFile(filename string, content []byte) error {
-	return c.user.StoreFile(filename, content)
+	return c.fileService.StoreFile(c.user, filename, content)
 }
 
 func (c *Client) LoadFile(filename string) ([]byte, error) {
-	return c.user.LoadFile(filename)
+	return c.fileService.LoadFile(c.user, filename)
 }
 
 func (c *Client) AppendToFile(filename string, content []byte) error {
-	return c.user.AppendToFile(filename, content)
+	return c.fileService.AppendToFile(c.user, filename, content)
 }
 
 func (c *Client) CreateInvitation(filename string, recipientUsername string) (uuid.UUID, error) {
-	return c.user.CreateInvitation(filename, recipientUsername)
+	return c.invitationService.CreateInvitation(c.user, filename, recipientUsername)
 }
 
 func (c *Client) AcceptInvitation(senderUsername string, invitationPtr uuid.UUID, filename string) error {
-	return c.user.AcceptInvitation(senderUsername, invitationPtr, filename)
+	return c.invitationService.AcceptInvitation(c.user, senderUsername, invitationPtr, filename)
 }
 
 func (c *Client) RevokeAccess(filename string, recipientUsername string) error {
-	return c.user.RevokeAccess(filename, recipientUsername)
+	return c.invitationService.RevokeAccess(c.user, filename, recipientUsername)
 }
 
 func (c *Client) ReadFile(filename string, address string) error {

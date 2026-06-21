@@ -198,7 +198,7 @@ make test-userlib      # userlib 测试
 ./sharelock host add dev localhost:8080 --tls=false
 
 # 通过环境变量选择主机
-SHARELOCK_HOST=dev ./sharelock storefile -filename hello.txt -content "data"
+SHARELOCK_HOST=dev ./sharelock store -f hello.txt -c "data"
 
 # 列出已配置的主机
 ./sharelock host list
@@ -210,24 +210,33 @@ SHARELOCK_HOST=dev ./sharelock storefile -filename hello.txt -content "data"
 # 构建二进制
 make build
 
-# 初始化用户
-./sharelock inituser -username alice -password secret
+# 创建账户
+./sharelock init -u alice -p secret
 
 # 存储文件
-./sharelock storefile -filename hello.txt -content "Hello, World!"
+./sharelock store -f hello.txt -c "Hello, World!"
 
 # 加载文件
-./sharelock loadfile -filename hello.txt
+./sharelock load -f hello.txt
 
 # 共享文件
-invite=$(./sharelock createinvitation -filename hello.txt -recipient bob)
-./sharelock acceptinvitation -sender alice -invitation $invite -filename hello.txt
+invite=$(./sharelock share -f hello.txt -r bob)
+
+# 接受邀请
+./sharelock accept -s alice -i $invite -f hello.txt
+
+# 追加内容
+./sharelock append -f hello.txt -c " 追加的内容"
 
 # 撤销访问
-./sharelock revokeaccess -filename hello.txt -recipient bob
+./sharelock revoke -f hello.txt -r bob
 
 # 通过 TLS 加密流读取文件
-./sharelock read -filename hello.txt -address localhost:8080
+./sharelock read -f hello.txt -a localhost:8080
+
+# 显示帮助
+./sharelock help
+./sharelock init --help
 
 # 运行 KV 存储服务端（make all 已生成证书）
 ./sharelock-server -address :8080 -dir ./data -cert cert.pem -key key.pem

@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/cs161-staff/project2-starter-code/internal/client/app"
 	"github.com/cs161-staff/project2-starter-code/internal/client/config"
 	"github.com/google/uuid"
 )
+
+var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -17,20 +20,31 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Handle --help/-h globally
+	if os.Args[1] == "--help" || os.Args[1] == "-h" {
+		printUsage()
+		os.Exit(0)
+	}
+
+	// Handle version
+	if os.Args[1] == "version" || os.Args[1] == "--version" {
+		fmt.Printf("sharelock %s\n", version)
+		os.Exit(0)
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: config load failed: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Handle host management commands
-	switch os.Args[1] {
-	case "host":
+	if os.Args[1] == "host" || os.Args[1] == "hosts" {
 		hostCmd(cfg, os.Args[2:])
 		return
 	}
 
-	// Connect to KV server via config
+	// Connect to KV server via config (except for 'read')
 	if os.Args[1] != "read" {
 		hostName := "default"
 		if h := os.Getenv("SHARELOCK_HOST"); h != "" {
@@ -46,116 +60,318 @@ func main() {
 	cli := &app.Client{}
 
 	switch os.Args[1] {
-	case "inituser":
-		cmd := flag.NewFlagSet("inituser", flag.ExitOnError)
-		username := cmd.String("username", "", "")
-		password := cmd.String("password", "", "")
-		cmd.Parse(os.Args[2:])
-		if err := cli.InitUser(*username, *password); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("ok")
-
-	case "getuser":
-		cmd := flag.NewFlagSet("getuser", flag.ExitOnError)
-		username := cmd.String("username", "", "")
-		password := cmd.String("password", "", "")
-		cmd.Parse(os.Args[2:])
-		if err := cli.GetUser(*username, *password); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("ok")
-
-	case "storefile":
-		cmd := flag.NewFlagSet("storefile", flag.ExitOnError)
-		filename := cmd.String("filename", "", "")
-		content := cmd.String("content", "", "")
-		cmd.Parse(os.Args[2:])
-		if err := cli.StoreFile(*filename, []byte(*content)); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("ok")
-
-	case "loadfile":
-		cmd := flag.NewFlagSet("loadfile", flag.ExitOnError)
-		filename := cmd.String("filename", "", "")
-		cmd.Parse(os.Args[2:])
-		data, err := cli.LoadFile(*filename)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Print(string(data))
-
-	case "appendtofile":
-		cmd := flag.NewFlagSet("appendtofile", flag.ExitOnError)
-		filename := cmd.String("filename", "", "")
-		content := cmd.String("content", "", "")
-		cmd.Parse(os.Args[2:])
-		if err := cli.AppendToFile(*filename, []byte(*content)); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("ok")
-
-	case "createinvitation":
-		cmd := flag.NewFlagSet("createinvitation", flag.ExitOnError)
-		filename := cmd.String("filename", "", "")
-		recipient := cmd.String("recipient", "", "")
-		cmd.Parse(os.Args[2:])
-		invite, err := cli.CreateInvitation(*filename, *recipient)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println(invite.String())
-
-	case "acceptinvitation":
-		cmd := flag.NewFlagSet("acceptinvitation", flag.ExitOnError)
-		sender := cmd.String("sender", "", "")
-		invitation := cmd.String("invitation", "", "")
-		filename := cmd.String("filename", "", "")
-		cmd.Parse(os.Args[2:])
-		invUUID, err := uuid.Parse(*invitation)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: invalid invitation UUID: %v\n", err)
-			os.Exit(1)
-		}
-		if err := cli.AcceptInvitation(*sender, invUUID, *filename); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("ok")
-
-	case "revokeaccess":
-		cmd := flag.NewFlagSet("revokeaccess", flag.ExitOnError)
-		filename := cmd.String("filename", "", "")
-		recipient := cmd.String("recipient", "", "")
-		cmd.Parse(os.Args[2:])
-		if err := cli.RevokeAccess(*filename, *recipient); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("ok")
-
+	case "init":
+		cmdInit(cli, os.Args[2:])
+	case "login":
+		cmdLogin(cli, os.Args[2:])
+	case "store":
+		cmdStore(cli, os.Args[2:])
+	case "load":
+		cmdLoad(cli, os.Args[2:])
+	case "append":
+		cmdAppend(cli, os.Args[2:])
+	case "share":
+		cmdShare(cli, os.Args[2:])
+	case "accept":
+		cmdAccept(cli, os.Args[2:])
+	case "revoke":
+		cmdRevoke(cli, os.Args[2:])
 	case "read":
-		cmd := flag.NewFlagSet("read", flag.ExitOnError)
-		filename := cmd.String("filename", "", "")
-		address := cmd.String("address", "localhost:8080", "")
-		tlsEnabled := cmd.Bool("tls", true, "use TLS encryption")
-		cmd.Parse(os.Args[2:])
-		if err := cli.ReadFileTLS(*filename, *address, *tlsEnabled); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("ok")
+		cmdRead(cli, os.Args[2:])
+
+	// Legacy command aliases
+	case "inituser", "getuser", "storefile", "loadfile", "appendtofile",
+		"createinvitation", "acceptinvitation", "revokeaccess":
+		runLegacy(os.Args[1], cli, os.Args[2:])
+
+	case "help":
+		printUsage()
 
 	default:
-		printUsage()
+		fmt.Fprintf(os.Stderr, "Error: unknown command '%s'\n\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "Run 'sharelock help' to see available commands.\n")
 		os.Exit(1)
+	}
+}
+
+func cmdInit(cli *app.Client, args []string) {
+	fs := flag.NewFlagSet("init", flag.ExitOnError)
+	username := fs.String("u", "", "username")
+	password := fs.String("p", "", "password")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Usage: sharelock init -u <username> -p <password>")
+		fmt.Fprintln(os.Stderr, "\nCreate a new user account.")
+		fmt.Fprintln(os.Stderr, "\nFlags:")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	if *username == "" || *password == "" {
+		fmt.Fprintln(os.Stderr, "Error: username and password are required")
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	if err := cli.InitUser(*username, *password); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("ok")
+}
+
+func cmdLogin(cli *app.Client, args []string) {
+	fs := flag.NewFlagSet("login", flag.ExitOnError)
+	username := fs.String("u", "", "username")
+	password := fs.String("p", "", "password")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Usage: sharelock login -u <username> -p <password>")
+		fmt.Fprintln(os.Stderr, "\nLogin as an existing user.")
+		fmt.Fprintln(os.Stderr, "\nFlags:")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	if *username == "" || *password == "" {
+		fmt.Fprintln(os.Stderr, "Error: username and password are required")
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	if err := cli.GetUser(*username, *password); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("ok")
+}
+
+func cmdStore(cli *app.Client, args []string) {
+	fs := flag.NewFlagSet("store", flag.ExitOnError)
+	filename := fs.String("f", "", "filename")
+	content := fs.String("c", "", "content")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Usage: sharelock store -f <filename> -c <content>")
+		fmt.Fprintln(os.Stderr, "\nStore a file (overwrites if exists).")
+		fmt.Fprintln(os.Stderr, "\nFlags:")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	if *filename == "" {
+		fmt.Fprintln(os.Stderr, "Error: filename is required")
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	if err := cli.StoreFile(*filename, []byte(*content)); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("ok")
+}
+
+func cmdLoad(cli *app.Client, args []string) {
+	fs := flag.NewFlagSet("load", flag.ExitOnError)
+	filename := fs.String("f", "", "filename")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Usage: sharelock load -f <filename>")
+		fmt.Fprintln(os.Stderr, "\nLoad and print file contents.")
+		fmt.Fprintln(os.Stderr, "\nFlags:")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	if *filename == "" {
+		fmt.Fprintln(os.Stderr, "Error: filename is required")
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	data, err := cli.LoadFile(*filename)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Print(string(data))
+}
+
+func cmdAppend(cli *app.Client, args []string) {
+	fs := flag.NewFlagSet("append", flag.ExitOnError)
+	filename := fs.String("f", "", "filename")
+	content := fs.String("c", "", "content")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Usage: sharelock append -f <filename> -c <content>")
+		fmt.Fprintln(os.Stderr, "\nAppend content to an existing file.")
+		fmt.Fprintln(os.Stderr, "\nFlags:")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	if *filename == "" {
+		fmt.Fprintln(os.Stderr, "Error: filename is required")
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	if err := cli.AppendToFile(*filename, []byte(*content)); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("ok")
+}
+
+func cmdShare(cli *app.Client, args []string) {
+	fs := flag.NewFlagSet("share", flag.ExitOnError)
+	filename := fs.String("f", "", "filename")
+	recipient := fs.String("r", "", "recipient username")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Usage: sharelock share -f <filename> -r <username>")
+		fmt.Fprintln(os.Stderr, "\nShare a file with another user. Prints invitation UUID.")
+		fmt.Fprintln(os.Stderr, "\nFlags:")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	if *filename == "" || *recipient == "" {
+		fmt.Fprintln(os.Stderr, "Error: filename and recipient are required")
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	invite, err := cli.CreateInvitation(*filename, *recipient)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println(invite.String())
+}
+
+func cmdAccept(cli *app.Client, args []string) {
+	fs := flag.NewFlagSet("accept", flag.ExitOnError)
+	sender := fs.String("s", "", "sender username")
+	invitation := fs.String("i", "", "invitation UUID")
+	filename := fs.String("f", "", "filename to save as")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Usage: sharelock accept -s <sender> -i <uuid> -f <filename>")
+		fmt.Fprintln(os.Stderr, "\nAccept a file sharing invitation.")
+		fmt.Fprintln(os.Stderr, "\nFlags:")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	if *sender == "" || *invitation == "" || *filename == "" {
+		fmt.Fprintln(os.Stderr, "Error: sender, invitation UUID, and filename are required")
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	invUUID, err := uuid.Parse(*invitation)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: invalid invitation UUID: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := cli.AcceptInvitation(*sender, invUUID, *filename); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("ok")
+}
+
+func cmdRevoke(cli *app.Client, args []string) {
+	fs := flag.NewFlagSet("revoke", flag.ExitOnError)
+	filename := fs.String("f", "", "filename")
+	recipient := fs.String("r", "", "recipient username")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Usage: sharelock revoke -f <filename> -r <username>")
+		fmt.Fprintln(os.Stderr, "\nRevoke a user's access to a file.")
+		fmt.Fprintln(os.Stderr, "\nFlags:")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	if *filename == "" || *recipient == "" {
+		fmt.Fprintln(os.Stderr, "Error: filename and recipient are required")
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	if err := cli.RevokeAccess(*filename, *recipient); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("ok")
+}
+
+func cmdRead(cli *app.Client, args []string) {
+	fs := flag.NewFlagSet("read", flag.ExitOnError)
+	filename := fs.String("f", "", "filename")
+	address := fs.String("a", "localhost:8080", "server address")
+	tlsEnabled := fs.Bool("tls", true, "use TLS encryption")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Usage: sharelock read -f <filename> [-a <host:port>] [-tls=true]")
+		fmt.Fprintln(os.Stderr, "\nRead a file via TLS-encrypted streaming.")
+		fmt.Fprintln(os.Stderr, "\nFlags:")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	if *filename == "" {
+		fmt.Fprintln(os.Stderr, "Error: filename is required")
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	if err := cli.ReadFileTLS(*filename, *address, *tlsEnabled); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("ok")
+}
+
+// runLegacy handles old command names for backward compatibility
+func runLegacy(cmd string, cli *app.Client, args []string) {
+	fmt.Fprintf(os.Stderr, "Warning: '%s' is deprecated. Use 'sharelock %s' instead.\n\n", cmd, legacyAlias(cmd))
+
+	switch cmd {
+	case "inituser":
+		cmdInit(cli, args)
+	case "getuser":
+		cmdLogin(cli, args)
+	case "storefile":
+		cmdStore(cli, args)
+	case "loadfile":
+		cmdLoad(cli, args)
+	case "appendtofile":
+		cmdAppend(cli, args)
+	case "createinvitation":
+		cmdShare(cli, args)
+	case "acceptinvitation":
+		cmdAccept(cli, args)
+	case "revokeaccess":
+		cmdRevoke(cli, args)
+	}
+}
+
+func legacyAlias(cmd string) string {
+	switch cmd {
+	case "inituser":
+		return "init"
+	case "getuser":
+		return "login"
+	case "storefile":
+		return "store"
+	case "loadfile":
+		return "load"
+	case "appendtofile":
+		return "append"
+	case "createinvitation":
+		return "share"
+	case "acceptinvitation":
+		return "accept"
+	case "revokeaccess":
+		return "revoke"
+	default:
+		return cmd
 	}
 }
 
@@ -164,8 +380,14 @@ func hostCmd(cfg *config.Config, args []string) {
 		hostUsage()
 		return
 	}
+
+	if args[0] == "--help" || args[0] == "-h" {
+		hostUsage()
+		return
+	}
+
 	switch args[0] {
-	case "list":
+	case "list", "ls":
 		hosts := cfg.List()
 		names := make([]string, 0, len(hosts))
 		for n := range hosts {
@@ -187,93 +409,139 @@ func hostCmd(cfg *config.Config, args []string) {
 
 	case "add":
 		if len(args) < 3 {
-			fmt.Fprintln(os.Stderr, "usage: host add <name> <addr> [--tls=true]")
+			fmt.Fprintln(os.Stderr, "Usage: sharelock host add <name> <addr> [--tls=false]")
 			os.Exit(1)
 		}
 		name := args[1]
 		addr := args[2]
 		tls := true
 		for i := 3; i < len(args); i++ {
-			if args[i] == "--tls=false" {
+			if args[i] == "--tls=false" || args[i] == "--no-tls" {
 				tls = false
 			}
 		}
 		cfg.Set(name, addr, tls)
 		if err := cfg.Save(); err != nil {
-			fmt.Fprintf(os.Stderr, "save error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error: save failed: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("ok")
 
-	case "remove":
+	case "rm", "remove":
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage: host remove <name>")
+			fmt.Fprintln(os.Stderr, "Usage: sharelock host rm <name>")
 			os.Exit(1)
 		}
 		cfg.Remove(args[1])
 		if err := cfg.Save(); err != nil {
-			fmt.Fprintf(os.Stderr, "save error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error: save failed: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("ok")
 
-	case "default":
+	case "default", "use":
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage: host default <name>")
+			fmt.Fprintln(os.Stderr, "Usage: sharelock host use <name>")
 			os.Exit(1)
 		}
 		entry, ok := cfg.Get(args[1])
 		if !ok {
-			fmt.Fprintf(os.Stderr, "host %q not found\n", args[1])
+			fmt.Fprintf(os.Stderr, "Error: host '%s' not found\n", args[1])
 			os.Exit(1)
 		}
 		cfg.Set("default", entry.Addr, entry.TLS)
 		cfg.Remove(args[1])
 		if err := cfg.Save(); err != nil {
-			fmt.Fprintf(os.Stderr, "save error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error: save failed: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("ok")
 
 	default:
+		fmt.Fprintf(os.Stderr, "Error: unknown host command '%s'\n\n", args[0])
 		hostUsage()
 	}
 }
 
 func hostUsage() {
-	fmt.Fprintln(os.Stderr, `Usage: host <command> [args]
+	fmt.Fprintln(os.Stderr, `Usage: sharelock host <command> [args]
 
 Commands:
-  list                   list all hosts
-  add <name> <addr>      add a host (--tls=false for plain TCP)
-  remove <name>          remove a host
-  default <name>         set an existing host as default`)
+  list, ls                  List all configured hosts
+  add <name> <addr>         Add a host (use --tls=false for plain TCP)
+  rm <name>                 Remove a host
+  use <name>                Set a host as default
+
+Examples:
+  sharelock host add dev localhost:8080 --tls=false
+  sharelock host use dev
+  sharelock host list`)
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, `Usage: %s <command> [flags]
+	cmd := os.Args[0]
+	align := func(name, desc string) string {
+		return fmt.Sprintf("  %-16s %s", name, desc)
+	}
 
-Environment:
-  SHARELOCK_HOST   select host from .hosts config (default: "default")
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf(`ShareLock - End-to-end encrypted file sharing
 
-Config file:
-  ~/.config/sharelock/.hosts  (fallback: ~/.hosts)
-
-Host management:
-  host list
-  host add <name> <addr> [--tls=false]
-  host remove <name>
-  host default <name>
+Usage:
+  %s <command> [flags]
 
 Commands:
-  inituser -username <name> -password <pw>
-  getuser -username <name> -password <pw>
-  storefile -filename <name> -content <data>
-  loadfile -filename <name>
-  appendtofile -filename <name> -content <data>
-  createinvitation -filename <name> -recipient <user>
-  acceptinvitation -sender <user> -invitation <uuid> -filename <name>
-  revokeaccess -filename <name> -recipient <user>
-  read -filename <name> [-address <host:port>] [-tls=true]
-`, os.Args[0])
+`, cmd))
+
+	sb.WriteString(align("init", "Create a new user account") + "\n")
+	sb.WriteString(align("login", "Login as existing user") + "\n")
+	sb.WriteString(align("store", "Store a file (overwrites if exists)") + "\n")
+	sb.WriteString(align("load", "Load and print file contents") + "\n")
+	sb.WriteString(align("append", "Append content to a file") + "\n")
+	sb.WriteString(align("share", "Share a file with another user") + "\n")
+	sb.WriteString(align("accept", "Accept a file sharing invitation") + "\n")
+	sb.WriteString(align("revoke", "Revoke a user's access") + "\n")
+	sb.WriteString(align("read", "Read file via TLS streaming") + "\n")
+	sb.WriteString(align("host", "Manage server connections") + "\n")
+	sb.WriteString(align("version", "Show version") + "\n")
+	sb.WriteString(align("help", "Show this help") + "\n")
+
+	sb.WriteString(`
+Flags:
+  -u    Username
+  -p    Password
+  -f    Filename
+  -c    Content
+  -r    Recipient
+  -s    Sender
+  -i    Invitation UUID
+  -a    Server address
+
+Quick Examples:
+  # Create account
+  sharelock init -u alice -p secret
+
+  # Store a file
+  sharelock store -f hello.txt -c "Hello, World!"
+
+  # Load a file
+  sharelock load -f hello.txt
+
+  # Share with someone
+  sharelock share -f hello.txt -r bob
+
+  # Accept invitation
+  sharelock accept -s alice -i <uuid> -f hello.txt
+
+  # Revoke access
+  sharelock revoke -f hello.txt -r bob
+
+Environment:
+  SHARELOCK_HOST    Select host from config (default: "default")
+
+Config:
+  ~/.config/sharelock/.hosts  (fallback: ~/.hosts)
+`)
+
+	fmt.Fprint(os.Stderr, sb.String())
 }

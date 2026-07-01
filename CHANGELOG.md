@@ -5,6 +5,24 @@ The format is based on [Keep a Changelog][Keep a Changelog] and this project adh
 
 ## [Unreleased]
 
+### Added
+- File listing: `list` command and `ListFiles` method
+- Session persistence: credentials cached to disk after `init`/`login`
+- Logout command to clear cached session
+- Debugging workflow section to AGENTS.md
+
+### Fixed
+- `ListFiles` no longer panics when user is not logged in
+- `FileSender` typo corrected in netstream module
+- `UserlibKeyStore` cross-test key contamination: each instance now maintains a per-instance cache to prevent stale keys from previous tests
+- Improved error messages with username/filename context across all services
+
+### Changed
+- Migration from CLAUDE.md to AGENTS.md with more compact, repo-specific guidance
+
+### Removed
+- Legacy duplicate struct definitions from encryption.go
+
 ## [v0.2.0] - 2021-03-29
 ### Changed
 - Updated [userlib][userlib] dependency to `v0.2.0`.

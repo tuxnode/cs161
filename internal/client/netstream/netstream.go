@@ -7,10 +7,8 @@ import (
 	"path"
 )
 
-func FileSeander(filename string, conn *net.Conn) error {
-	safename := path.Base(filename)
-
-	file, err := os.OpenFile(safename, os.O_RDONLY, 0444)
+func FileSender(filename string, conn *net.Conn) error {
+	file, err := os.Open(filename)
 	if err != nil {
 		return err
 	}
@@ -30,8 +28,5 @@ func FileReceiver(filename string, conn *net.Conn) error {
 	defer file.Close()
 
 	_, err = io.Copy(file, *conn)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }

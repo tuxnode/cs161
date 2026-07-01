@@ -60,11 +60,29 @@ func main() {
 
 	cli := &app.Client{}
 
+	userCommands := map[string]bool{
+		"store": true, "load": true, "append": true,
+		"share": true, "accept": true, "revoke": true, "list": true,
+	}
+	if userCommands[os.Args[1]] {
+		if u, p, ok := config.LoadSession(); ok {
+			if err := cli.GetUser(u, p); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: session expired, please login again: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			fmt.Fprintln(os.Stderr, "Error: not logged in. Run 'sharelock login -u <user> -p <pass>' first.")
+			os.Exit(1)
+		}
+	}
+
 	switch os.Args[1] {
 	case "init":
 		cmdInit(cli, os.Args[2:])
 	case "login":
 		cmdLogin(cli, os.Args[2:])
+	case "logout":
+		cmdLogout()
 	case "store":
 		cmdStore(cli, os.Args[2:])
 	case "load":
@@ -119,6 +137,7 @@ func cmdInit(cli *app.Client, args []string) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+	config.SaveSession(*username, *password)
 	fmt.Println("ok")
 }
 
@@ -144,6 +163,12 @@ func cmdLogin(cli *app.Client, args []string) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+	config.SaveSession(*username, *password)
+	fmt.Println("ok")
+}
+
+func cmdLogout() {
+	config.ClearSession()
 	fmt.Println("ok")
 }
 
@@ -516,6 +541,7 @@ Commands:
 
 	sb.WriteString(align("init", "Create a new user account") + "\n")
 	sb.WriteString(align("login", "Login as existing user") + "\n")
+	sb.WriteString(align("logout", "Logout and clear session") + "\n")
 	sb.WriteString(align("store", "Store a file from disk (overwrites if exists)") + "\n")
 	sb.WriteString(align("load", "Load and print file contents") + "\n")
 	sb.WriteString(align("append", "Append content to a file") + "\n")

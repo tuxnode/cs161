@@ -80,6 +80,9 @@ func (c *Client) RevokeAccess(filename string, recipientUsername string) error {
 }
 
 func (c *Client) ListFiles() []string {
+	if c.user == nil {
+		return []string{}
+	}
 	return c.fileService.ListFiles(c.user)
 }
 
